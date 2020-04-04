@@ -36,4 +36,9 @@ module.exports.session = {
   //   return !!req.path.match(req._sails.LOOKS_LIKE_ASSET_RX);
   // },
 
+  session: {
+    cookie: {
+      secure: true
+    }
+  }
 };
