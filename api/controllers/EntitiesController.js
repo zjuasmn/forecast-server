@@ -134,11 +134,12 @@ module.exports = {
       const from = getNextTime(
         timeStringToNumber(req.query.from || Date.now()),
         86400000,
+        16 * 3600000,
       )
       // Mock forecast
       const record = (await Records.find({ where: { entityId }, limit: 1 }))[0]
       return res.json({
-        data: range(16).map(i => ({
+        data: range(96).map(i => ({
           time: numberToTimeString(from + i * 900000),
           power: record.power * random(0.8, 1.2),
           power_5: null,

@@ -30,7 +30,7 @@
     "type": "git",
     "url": "git://github.com/jialei/forecast-server.git"
   },
-  "author": "jialei",
+  "author": "asmn",
   "license": "",
   "engines": {
     "node": "^10.16"
