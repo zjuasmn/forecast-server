@@ -95,8 +95,8 @@ const modelForecast = async (entity, forecastScale, power) => {
 
 const clusterAnalysis = async (month, data) => {
   fs.writeFileSync(`./data/clusterInput.json`, JSON.stringify({ month, data }))
-  await Promise((resolve, reject) => child_process.exec(
-    `python ./algorithm/cluster ./data/clusterInput.json ./data/clusterOutput.json`,
+  await new Promise((resolve, reject) => child_process.exec(
+    `python ./algorithm/cluster.py ./data/clusterInput.json ./data/clusterOutput.json`,
     (error) => {
       if (error) {
         return reject(error)
@@ -272,37 +272,43 @@ module.exports = {
   },
 
   cluster: async (req, res) => {
-    const month = req.query('month') || `${new Date().getFullYear()}-${new Date().getMonth() + 1}`
+    const month = req.query['month'] || `${new Date().getFullYear()}-${new Date().getMonth() + 1}`
     const ids = _.union(req.body.ids)
     if (!ids.length) {
       return res.badRequest({ error: 'ids should not be empty' })
     }
-    const entities = await Entities.find({ id: { $in: ids } })
-    if (entities.length !== ids.length) {
-      return res.badRequest({ error: `Entity not found: found ${entities.map(({ id }) => id).join(',')}` })
+    const entities = await Promise.all(ids.map(id => Entities.findOne({ id })))
+    if (!entities.every(Boolean)) {
+      return res.badRequest({ error: `Entity not found` })
     }
 
     const startTime = new Date(month).getTime()
-    const endTime = new Date(month).setMonth(new Date(month).getMonth() + 1).getTime()
-    const records = await Records.find({ entityId: { $in: ids }, time: { $gte: startTime, $lt: endTime } })
+    let endTime = new Date(month)
+    endTime.setMonth(new Date(month).getMonth() + 1)
+    endTime = endTime.getTime()
+    const records = await Promise.all(entities.map(({ id }) => Records.find({ entityId: id, time: { '>=': startTime, '<': endTime } })))
 
-    const clusterResult = await clusterAnalysis(
-      month,
-      entities.map(({ id, name }) => ({
-        id,
-        name,
-        power: (() => {
-          const recordByTime = _.keyBy(
-            records.find(({ entityId }) => entityId === id),
-            ({ time }) => time
-          )
-          return _.range(startTime, endTime, 15 * 60 * 1000)
-            .map(t => recordByTime[t] ? recordByTime[t].power : 0)
-        })(),
-      })),
-    )
-    return res.json({
-      data: clusterResult,
-    })
+    try {
+      const clusterResult = await clusterAnalysis(
+        month,
+        entities.map(({id, name}) => ({
+          id,
+          name,
+          power: (() => {
+            const recordByTime = _.keyBy(
+              records.find(({entityId}) => entityId === id),
+              ({time}) => time
+            )
+            return _.range(startTime, endTime, 15 * 60 * 1000)
+              .map(t => recordByTime[t] ? recordByTime[t].power : 0)
+          })(),
+        })),
+      )
+      return res.json({
+        data: clusterResult,
+      })
+    } catch(e) {
+      return res.forbidden({ error: e.message })
+    }
   },
 }

@@ -37,7 +37,7 @@ def dataPreprocess(month, data):
     for unit in data:
         power = np.array(unit['power']).reshape(len(dateseries), len(timeseries))  # 将原始数据转换为天数*时刻数的矩阵
         powerDf = pd.DataFrame(power, index = dateseries, columns = timeseries)  # 矩阵→dataframe
-        powerDf['week'] = powerDf.index.weekday_name  # 获取每天对应星期几
+        powerDf['week'] = [weekList[d % 7] for d in range(0, days_in_month)]  # 获取每天对应星期几
         weekPowerDf = powerDf.groupby('week').mean()  # 对分属周日/周一/…/周六的日期进行求平均
         weekPowerDf = weekPowerDf.loc[weekList, :]  # 按照weekList给出的顺序进行排序
         weekPowerDf.index = [[unit['id']]*7, weekPowerDf.index]

@@ -133,3 +133,4 @@ lib-cov
 *.pid
 data/*
 log/*
+venv/

@@ -39,5 +39,5 @@ module.exports.routes = {
   'PUT /api/entities/:id/history': 'EntitiesController.updateHistory',
   'GET /api/entities/:id/history': 'EntitiesController.listHistory',
   'GET /api/entities/:id/forecast': 'EntitiesController.forecast',
-  'GET /api/cluster': 'EntitiesController.cluster',
+  'POST /api/cluster': 'EntitiesController.cluster',
 };
