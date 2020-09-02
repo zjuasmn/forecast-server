@@ -23,7 +23,7 @@ const modelTrain = async entity => {
     time: new Date().toISOString(),
     entity: {
       ...entity,
-      forecastScale: "ultrashort",
+      forecastScale: 'ultrashort',
       type: entity.type === 'SUBSTATION' ? 'LOAD' : entity.type,
     },
     data: {
@@ -36,7 +36,7 @@ const modelTrain = async entity => {
     time: new Date().toISOString(),
     entity: {
       ...entity,
-      forecastScale: "short",
+      forecastScale: 'short',
       type: entity.type === 'SUBSTATION' ? 'LOAD' : entity.type,
     },
     data: {
@@ -91,6 +91,20 @@ const modelForecast = async (entity, forecastScale, power) => {
     },
   ))
   return JSON.parse(fs.readFileSync(`./data/${entityId}_forecastOutput.json`, 'utf8'))
+}
+
+const clusterAnalysis = async (month, data) => {
+  fs.writeFileSync(`./data/clusterInput.json`, JSON.stringify({ month, data }))
+  await Promise((resolve, reject) => child_process.exec(
+    `python ./algorithm/cluster ./data/clusterInput.json ./data/clusterOutput.json`,
+    (error) => {
+      if (error) {
+        return reject(error)
+      }
+      return resolve()
+    }
+  ))
+  return JSON.parse(fs.readFileSync(`./data/clusterOutput.json`, 'utf8'))
 }
 
 module.exports = {
@@ -150,7 +164,7 @@ module.exports = {
       return res.badRequest({ error: 'time should be multiple of 15 minutes' })
     }
     const file = fs.openSync(`./data/${entityId}.txt`, 'a')
-    fs.writeSync(file, data.map(({ power }) =>`${power}\n`).join(''))
+    fs.writeSync(file, data.map(({ power }) => `${power}\n`).join(''))
     fs.closeSync(file)
 
     const updatedRecords = await Promise.all(
@@ -218,8 +232,8 @@ module.exports = {
     }
     const from = forecastType === 'ULTRASHORT15_16'
       ? getNextTime(
-      timeStringToNumber(req.query.from || Date.now()),
-      900000,
+        timeStringToNumber(req.query.from || Date.now()),
+        900000,
       )
       : getNextTime(
         timeStringToNumber(req.query.from || Date.now()),
@@ -232,13 +246,16 @@ module.exports = {
     const forecastLength = forecastType === 'ULTRASHORT15_16'
       ? 16
       : 96
-    const records = (await Records.find({ where: { entityId, time: { '>=': from - 7 * 86400 * 1000, '<': from} }, sort: { time: 1 } }))
+    const records = (await Records.find({
+      where: { entityId, time: { '>=': from - 7 * 86400 * 1000, '<': from } },
+      sort: { time: 1 }
+    }))
     const recordByTime = _.keyBy(records, ({ time }) => time)
     const forecastOutput = await modelForecast(
       entity,
       forecastScale,
       _.range(from - 7 * 86400 * 1000, from, 900000)
-        .map(time => (recordByTime[time] || { power: 0}).power),
+        .map(time => (recordByTime[time] || { power: 0 }).power),
     )
     return res.json({
       data: range(forecastLength).map(i => ({
@@ -251,6 +268,41 @@ module.exports = {
         power_90: forecastOutput[i]['0.9'],
         power_95: forecastOutput[i]['0.95'],
       })),
+    })
+  },
+
+  cluster: async (req, res) => {
+    const month = req.query('month') || `${new Date().getFullYear()}-${new Date().getMonth() + 1}`
+    const ids = _.union(req.body.ids)
+    if (!ids.length) {
+      return res.badRequest({ error: 'ids should not be empty' })
+    }
+    const entities = await Entities.find({ id: { $in: ids } })
+    if (entities.length !== ids.length) {
+      return res.badRequest({ error: `Entity not found: found ${entities.map(({ id }) => id).join(',')}` })
+    }
+
+    const startTime = new Date(month).getTime()
+    const endTime = new Date(month).setMonth(new Date(month).getMonth() + 1).getTime()
+    const records = await Records.find({ entityId: { $in: ids }, time: { $gte: startTime, $lt: endTime } })
+
+    const clusterResult = await clusterAnalysis(
+      month,
+      entities.map(({ id, name }) => ({
+        id,
+        name,
+        power: (() => {
+          const recordByTime = _.keyBy(
+            records.find(({ entityId }) => entityId === id),
+            ({ time }) => time
+          )
+          return _.range(startTime, endTime, 15 * 60 * 1000)
+            .map(t => recordByTime[t] ? recordByTime[t].power : 0)
+        })(),
+      })),
+    )
+    return res.json({
+      data: clusterResult,
     })
   },
 }
